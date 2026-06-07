@@ -1,0 +1,91 @@
+jenkins:
+  systemMessage: "Managed by JCasC"
+  numExecutors: 2
+  mode: NORMAL
+  scmCheckoutRetryCount: 3
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          name: "관리자"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  remotingSecurity:
+    enabled: true
+
+unclassified:
+  location:
+    url: "https://jenkins.${DOMAIN}/"
+    adminAddress: "${JENKINS_ADMIN_EMAIL:-admin@example.com}"
+
+  timestamper:
+    allPipelines: true
+
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true
+
+tool:
+  git:
+    installations:
+      - name: Default
+        home: git
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: discord-webhook-build-success
+              secret: "${DISCORD_WEBHOOK_BUILD_SUCCESS:-}"
+              description: "Discord webhook: 빌드 성공"
+          - string:
+              scope: GLOBAL
+              id: discord-webhook-build-failure
+              secret: "${DISCORD_WEBHOOK_BUILD_FAILURE:-}"
+              description: "Discord webhook: 빌드 실패"
+          - string:
+              scope: GLOBAL
+              id: sampleapp-db-username
+              secret: "${SAMPLEAPP_DB_USERNAME:-dbuser}"
+              description: "sampleapp DB username"
+          - string:
+              scope: GLOBAL
+              id: sampleapp-db-password
+              secret: "${SAMPLEAPP_DB_PASSWORD:-}"
+              description: "sampleapp DB password"
+          - string:
+              scope: GLOBAL
+              id: domain-name
+              secret: "${DOMAIN}"
+              description: "메인 도메인"
+
+jobs:
+  - script: |
+      pipelineJob('sampleapp') {
+        description('sampleapp - GitHub main 브랜치 자동 빌드·배포')
+        triggers {
+          githubPush()
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/tletle7102/sampleapp.git')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

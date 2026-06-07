@@ -1,0 +1,5 @@
+infra/.env
+infra/traefik/acme/acme.json
+data/
+logs/
+*.log

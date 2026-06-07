@@ -1,0 +1,125 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/acme:/etc/traefik/acme
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+    networks:
+      - infra-net
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  jenkins:
+    build:
+      context: ./jenkins
+      args:
+        DOCKER_GID: ${HOST_DOCKER_GID:-988}
+    image: my-jenkins:jcasc
+    container_name: jenkins
+    restart: unless-stopped
+    ports:
+      - "8100:8080"
+      - "50000:50000"
+    env_file:
+      - .env
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
+      - JENKINS_URL=https://jenkins.${DOMAIN}
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jenkins.rule=Host(`jenkins.${DOMAIN}`)"
+      - "traefik.http.routers.jenkins.entrypoints=websecure"
+      - "traefik.http.routers.jenkins.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jenkins.loadbalancer.server.port=8080"
+    networks:
+      - infra-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+  postgres:
+    image: postgres:17
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - TZ=Asia/Seoul
+    volumes:
+      - /mydata/postgres:/var/lib/postgresql/data
+    networks:
+      - infra-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  landing:
+    image: nginx:alpine
+    container_name: landing
+    restart: unless-stopped
+    volumes:
+      - ./landing/index.html:/usr/share/nginx/html/index.html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.landing.rule=Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)"
+      - "traefik.http.routers.landing.entrypoints=websecure"
+      - "traefik.http.routers.landing.tls.certresolver=letsencrypt"
+      - "traefik.http.services.landing.loadbalancer.server.port=80"
+    networks:
+      - infra-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  autoheal:
+    image: willfarrell/autoheal
+    container_name: autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  infra-net:
+    name: infra-net
+    driver: bridge
+
+volumes:
+  jenkins_home:
+    name: jenkins_home

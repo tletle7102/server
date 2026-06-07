@@ -1,0 +1,43 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: infra-net
+    watch: true
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: tletle7102@gmail.com
+      storage: /etc/traefik/acme/acme.json
+      httpChallenge:
+        entryPoint: web
+
+ping:
+  entryPoint: web
+
+log:
+  level: INFO
+
+accessLog: {}
